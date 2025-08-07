@@ -1,0 +1,13 @@
+Release History
+===============
+
+Version 0.0.1 - 2025-08-07
+--------------------------
+- Initial public release
+- Built with GNU Autotools
+- Includes:
+  - `ws2812d`: A daemon for WS2812 LED control
+  - `shmled`: Shared memory RGB buffer writer
+- Supports runtime color updates via shared memory
+- Supports external rpi_ws281x as shared lib via --with-rpi-ws281x
+
