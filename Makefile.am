@@ -22,4 +22,5 @@ distclean-local:
 					install-sh\
 					ltmain.sh\
 					missing\
-					src/Makefile.in
+					src/Makefile.in\
+					src/.deps
