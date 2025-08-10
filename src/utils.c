@@ -1,5 +1,5 @@
 /*
- * utils.c - rpi-ws2812d WS2812 LED control daemon using shared memory
+ * utils.c - rpi-ws2812d common utility functions
  *
  * SPDX-License-Identifier: GPL-3.0
  *
@@ -9,10 +9,19 @@
  * This file is part of the rpi-ws2812d project and is licensed under the GNU
  * General Public License v3.0 or later.
  *
- * rpi-ws2812d is a lightweight userspace daemon designed to control WS2812 addressable RGB LEDs
- * on Raspberry Pi using shared memory. It enables external applications to update LED data
- * by writing to a shared memory region, allowing for flexible and fast integration in
- * embedded or headless systems.
+ * This file implements helper functions shared across rpi-ws2812d programs,
+ * providing consistent, safe parsing and list-checking utilities, as well as
+ * color space conversion.
+ *
+ * Functions:
+ *   - xstr2umax(): Convert string to uintmax_t with validation.
+ *   - xhexstr2rgb(): Convert RGB hex string to separate R, G, B components.
+ *   - int_in_list(): Check if an integer is in a given integer list.
+ *   - str_in_list(): Check if a string is in a given string list.
+ *   - hsv2rgb(): Convert HSV color to RGB color.
+ *
+ * These functions are designed for strict input validation, error handling,
+ * and color manipulation to support robust LED control and configuration parsing.
  *
  * Project GitHub: https://github.com/KaliAssistant/rpi-ws2812d
  *

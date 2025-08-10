@@ -14,6 +14,15 @@
  * by writing to a shared memory region, allowing for flexible and fast integration in
  * embedded or headless systems.
  *
+ * Features:
+ *   - Controls WS2812/NeoPixel LEDs on Raspberry Pi using the rpi_ws281x library.
+ *   - Reads RGB LED color data from shared memory to allow external updates.
+ *   - Supports power control of LEDs via configurable GPIO power pin.
+ *   - Configurable LED count, data pin, power pin, and polling delay via config file.
+ *   - Prevents multiple instances by PID lock file.
+ *   - Supports daemon mode for background operation.
+ *   - Uses Linux GPIO character device API for power pin control.
+ *
  * Project GitHub: https://github.com/KaliAssistant/rpi-ws2812d
  *
  * This project includes components under the following licenses:
@@ -275,15 +284,15 @@ int main(int argc, char **argv) {
 
     int ini_parse_err = ini_parse(ws2812d_conf_file, conf_handler, &ws2812d_default_conf);
     if ( ini_parse_err < 0) {
-        perror("main.conf_prarse.cannot_load_conf");
+        perror("main.conf_parse.cannot_load_conf");
         return 1;
     } else if (ini_parse_err) {
-        fprintf(stderr, "main.conf_prarse.bad_conf_file: bad config file (first error on line %d).\n", ini_parse_err);
+        fprintf(stderr, "main.conf_parse.bad_conf_file: bad config file (first error on line %d).\n", ini_parse_err);
         return 1;
     }
 
     if (conf_checker(&ws2812d_default_conf) < 0) {
-        fprintf(stderr, "main.conf_prarse.conf_checker_error: invalid configuration.\n");
+        fprintf(stderr, "main.conf_parse.conf_checker_error: invalid configuration.\n");
         return 1;
     }
 

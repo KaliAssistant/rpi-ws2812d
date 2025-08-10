@@ -1,5 +1,5 @@
 /*
- * shmled.c - rpi-ws2812d WS2812 LED control daemon using shared memory
+ * shmled.c - Shared memory RGB LED writer for rpi-ws2812d WS2812 daemon
  *
  * SPDX-License-Identifier: GPL-3.0
  *
@@ -9,10 +9,19 @@
  * This file is part of the rpi-ws2812d project and is licensed under the GNU
  * General Public License v3.0 or later.
  *
- * rpi-ws2812d is a lightweight userspace daemon designed to control WS2812 addressable RGB LEDs
- * on Raspberry Pi using shared memory. It enables external applications to update LED data
- * by writing to a shared memory region, allowing for flexible and fast integration in
- * embedded or headless systems.
+ * shmled is a lightweight utility daemon that writes RGB color data
+ * into shared memory to control WS2812 RGB LEDs via the rpi-ws2812d driver.
+ * It supports static colors, animated effects (blink, fade, rainbow),
+ * and playback of RGB frame sequences from files.
+ *
+ * Features:
+ *   - Writes RGB color data (3 bytes) to shared memory region for WS2812 LED control.
+ *   - Supports one-time static color set or continuous loop mode.
+ *   - Loop modes include blink, fade (brightness pulse), rainbow color cycle, and RGB file playback.
+ *   - RGB file playback supports looping playback of binary RGB frames from file.
+ *   - Configurable delay (in microseconds) between frames.
+ *   - Handles UNIX signals to clean up shared memory mapping on exit.
+ *   - Parses RGB hex string color codes (e.g. "#RRGGBB").
  *
  * Project GitHub: https://github.com/KaliAssistant/rpi-ws2812d
  *
