@@ -63,6 +63,7 @@
 #define LED_COUNT 1
 #define DMA 10
 
+#define DEFAULT_CONF_LED_CHANNEL 0
 #define DEFAULT_CONF_PWR_GPIO 16
 #define DEFAULT_CONF_DATA_GPIO 21
 #define DEFAULT_CONF_DELAY_US 2000
@@ -82,11 +83,10 @@ static ws2811_t ledstring =
     .channel =
     {
         [0] = {
-            .gpionum = DEFAULT_CONF_DATA_GPIO,
-            .count = LED_COUNT,
+            .gpionum = 0,
+            .count = 0,
             .invert = 0,
-            .strip_type = WS2812_STRIP_TYPE,
-            .brightness = 255,
+            .brightness = 0,
         },
         [1] = {
             .gpionum = 0,
@@ -100,6 +100,7 @@ static ws2811_t ledstring =
 typedef struct ws2812d_conf {
     int power_pin;
     int data_pin;
+    int channel;
     uintmax_t delay_us;
 }ws2812d_conf;
 
@@ -112,12 +113,17 @@ static int gpio_line_fd = -1;
 
 static ws2812d_conf ws2812d_default_conf = {
     .power_pin = DEFAULT_CONF_PWR_GPIO,
+    .channel = DEFAULT_CONF_LED_CHANNEL,
     .data_pin = DEFAULT_CONF_DATA_GPIO,
     .delay_us = DEFAULT_CONF_DELAY_US,
 };
 
-static const int available_data_gpio[] = {
-    10, 12, 13, 18, 19, 21,
+static const int available_channel0_gpio[] = {
+    10, 12, 18, 21,
+};
+
+static const int available_channel1_gpio[] = {
+    13, 19,
 };
 
 static const int available_pwr_gpio[] = {
@@ -133,6 +139,8 @@ static int conf_handler(void *user, const char *section, const char *name, const
         config->power_pin = atoi(value);
     } else if (CONF_MATCH("gpio", "data_pin")) {
         config->data_pin = atoi(value);
+    } else if (CONF_MATCH("gpio", "channel")) {
+        config->channel = atoi(value);
     } else if (CONF_MATCH("user", "delay_us")) {
         return xstr2umax(value, 10, &config->delay_us);
     } else {
@@ -147,13 +155,24 @@ static int conf_checker(const ws2812d_conf *conf) {
         perror("conf.ini_checker.got_null_conf");
         abort();
     }
+    
     if (!int_in_list(conf->power_pin, available_pwr_gpio, sizeof(available_pwr_gpio)/sizeof(int))) {
         fprintf(stderr, "conf.ini_checker.invalid_config: invalid power pin: %d\n", conf->power_pin);
         return -1;
     }
-    if (!int_in_list(conf->data_pin, available_data_gpio, sizeof(available_data_gpio)/sizeof(int))) {
-        fprintf(stderr, "conf.ini_checker.invalid_config: invalid data pin: %d\n", conf->data_pin);
+
+    if (conf->channel == 0 && !int_in_list(conf->data_pin, available_channel0_gpio, sizeof(available_channel0_gpio)/sizeof(int))) {
+        fprintf(stderr, "conf.ini_checker.invalid_config: invalid data pin: %d with channel 0\n", conf->data_pin);
         return -1;
+    }
+    
+    if (conf->channel == 1 && !int_in_list(conf->data_pin, available_channel1_gpio, sizeof(available_channel1_gpio)/sizeof(int))) {
+        fprintf(stderr, "conf.ini_checker.invalid_config: invalid data pin: %d with channel 1\n", conf->data_pin);
+        return -1;
+    }
+
+    if (conf->channel > 1 || conf->channel < 0) {
+        fprintf(stderr, "conf.ini_checker.invalid_config: invalid channel: %d\n", conf->channel);
     }
 
     return 0;
@@ -172,7 +191,10 @@ static void conf_apply(ws2811_t *_led_string, const ws2812d_conf *conf) {
         abort();
     }
 
-    _led_string->channel[0].gpionum = conf->data_pin;
+    _led_string->channel[conf->channel].gpionum = conf->data_pin;
+    _led_string->channel[conf->channel].count = LED_COUNT;
+    _led_string->channel[conf->channel].strip_type = WS2812_STRIP_TYPE;
+    _led_string->channel[conf->channel].brightness = 255;
     return;
 }
 
@@ -181,7 +203,7 @@ static void cleanup()
 {
     if (last_shm_ptr) free(last_shm_ptr);
     // Turn off LEDs
-    memset(ledstring.channel[0].leds, 0, led_count * sizeof(ws2811_led_t));
+    memset(ledstring.channel[ws2812d_default_conf.channel].leds, 0, led_count * sizeof(ws2811_led_t));
     ws2811_render(&ledstring);
     ws2811_fini(&ledstring);
 
@@ -377,7 +399,7 @@ int main(int argc, char **argv) {
                 int r = shm_ptr[i * 3 + 0];
                 int g = shm_ptr[i * 3 + 1];
                 int b = shm_ptr[i * 3 + 2];
-                ledstring.channel[0].leds[i] = (r << 16) | (g << 8) | b;
+                ledstring.channel[ws2812d_default_conf.channel].leds[i] = (r << 16) | (g << 8) | b;
             }
             ws2811_render(&ledstring);
         }
