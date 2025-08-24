@@ -14,7 +14,6 @@
  * color space conversion.
  *
  * Functions:
- *   - xstr2umax(): Convert string to uintmax_t with validation.
  *   - xhexstr2rgb(): Convert RGB hex string to separate R, G, B components.
  *   - int_in_list(): Check if an integer is in a given integer list.
  *   - str_in_list(): Check if a string is in a given string list.
@@ -36,17 +35,7 @@
 #define UTILS_H
 
 #include <inttypes.h>
-
-/**
- * Convert a string representing an unsigned integer in a given base
- * to a uintmax_t value.
- *
- * @param str   The input string to convert.
- * @param base  The numeric base to interpret the string (e.g., 10, 16).
- * @param val   Pointer to store the converted uintmax_t value.
- * @return      true if conversion succeeded and string fully parsed, false otherwise.
- */
-bool xstr2umax(const char *str, int base, uintmax_t *val);
+#include <limits.h>  // for UINT*_MAX & INT*_MIN/MAX
 
 /**
  * Convert a hex color string to RGB components.
@@ -96,5 +85,8 @@ bool str_in_list(const char *s, const char * const list[], size_t len);
  * @param b Pointer to output blue component.
  */
 void hsv2rgb(float h, float s, float v, uint8_t *r, uint8_t *g, uint8_t *b);
+
+
+
 
 #endif /* UTILS_H */

@@ -14,7 +14,6 @@
  * color space conversion.
  *
  * Functions:
- *   - xstr2umax(): Convert string to uintmax_t with validation.
  *   - xhexstr2rgb(): Convert RGB hex string to separate R, G, B components.
  *   - int_in_list(): Check if an integer is in a given integer list.
  *   - str_in_list(): Check if a string is in a given string list.
@@ -42,19 +41,6 @@
 #include <string.h>
 #include <math.h>
 
-
-bool xstr2umax(const char *str, int base, uintmax_t *val) {
-    errno = 0;
-    char *endptr;
-    *val = strtoumax(str, &endptr, base);
-    
-    if (*endptr != '\0' || str == endptr) {
-        errno = EINVAL;
-        return false;
-    }
-    if (errno == ERANGE) return false;
-    return true;
-}
 
 bool xhexstr2rgb(const char *hex_str, uint8_t *r, uint8_t *g, uint8_t *b) {
     int hex_str_len = strlen(hex_str);

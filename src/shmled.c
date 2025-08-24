@@ -47,6 +47,7 @@
 #include <getopt.h>
 #include <math.h>
 #include "utils.h"
+#include "xstrconv.h"
 //#include "version.h"
 #include "config.h"
 
@@ -61,7 +62,7 @@ static int loop = 0;
 static int blink = 0;
 static int fade = 0;
 static int rainbow = 0;
-static uintmax_t delay_us = 500000;
+static uint32_t delay_us = 500000;
 static const char *input_file = NULL;
 
 static int setup_shm_writer(void) {
@@ -187,7 +188,7 @@ static int do_file_playback(bool loop) {
 
 static void usage(const char *prog_name) {
     if (!prog_name) return;
-    fprintf(stderr, "shmLED - rpi-ws2812d WS281x RGB NeoPixel daemon for raspberry pi\n\n");
+    fprintf(stderr, "shmLED - Shared memory RGB LED writer for rpi-ws2812d WS2812 daemon\n\n");
     fprintf(stderr, "Usage: %s -c #RRGGBB -i <rgb bin file input> [-l -i|-b|-d|-r] [-s µs]\n\n", prog_name);
     fprintf(stderr, "-c :\t#RRGGBB, rgb hex code\n");
     fprintf(stderr, "-i :\t<input.bin>, rgb bin file input, format: \\xRR\\xGG\\xBB ...\n\n");
@@ -219,7 +220,7 @@ int main(int argc, char **argv) {
             case 'd': fade = 1; break;
             case 'r': rainbow = 1; break;
             case 's': 
-                if (!xstr2umax(optarg, 10, &delay_us)) {
+                if (!xstr2u32(optarg, 10, &delay_us)) {
                     perror("main.optarg.cannot_parse_delay_us");
                     return 1;
                 }

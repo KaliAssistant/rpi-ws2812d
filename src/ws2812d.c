@@ -45,85 +45,52 @@
 #include <sys/mman.h>
 #include <sys/file.h>
 #include <linux/gpio.h>
+#include <linux/spi/spidev.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <getopt.h>
-#include <ws2811/ws2811.h>
 #include "ini.h"
 #include "utils.h"
+#include "xstrconv.h"
 //#include "version.h"
 #include "config.h"
 
-#define SHM_FILE "/led_rgb"
-#define LOCK_FILE "/var/run/ws2812.lock"
-#define WS2812D_CONF_FILE "/etc/ws2812d/ws2812d.conf"
-#define POWER_GPIOCHIP "/dev/gpiochip0"
+#define SHM_FILE            "/led_rgb"
+#define LOCK_FILE           "/var/run/ws2812.lock"
+#define WS2812D_CONF_FILE   "/etc/ws2812d/ws2812d.conf"
+#define POWER_GPIOCHIP      "/dev/gpiochip0"
+#define SPI_DEV             "/dev/spidev0.0"
 
-#define WS2812_STRIP_TYPE WS2811_STRIP_GRB
 #define LED_COUNT 1
-#define DMA 10
 
-#define DEFAULT_CONF_LED_CHANNEL 0
-#define DEFAULT_CONF_PWR_GPIO 16
-#define DEFAULT_CONF_DATA_GPIO 21
-#define DEFAULT_CONF_DELAY_US 2000
-
-#define TARGET_FREQ WS2811_TARGET_FREQ
-
-//static volatile int keep_running = 1;
+#define DEFAULT_CONF_PWR_GPIO     16
+#define DEFAULT_CONF_DELAY_US     2000
+#define DEFAULT_CONF_SPI_FREQ     2400000
 
 static int led_count = LED_COUNT;
 static int is_daemon = 0;
 static char *ws2812d_conf_file = WS2812D_CONF_FILE;
 
-static ws2811_t ledstring =
-{
-    .freq = TARGET_FREQ,
-    .dmanum = DMA,
-    .channel =
-    {
-        [0] = {
-            .gpionum = 0,
-            .count = 0,
-            .invert = 0,
-            .brightness = 0,
-        },
-        [1] = {
-            .gpionum = 0,
-            .count = 0,
-            .invert = 0,
-            .brightness = 0,
-        },
-    },
-};
-
 typedef struct ws2812d_conf {
     int power_pin;
-    int data_pin;
-    int channel;
-    uintmax_t delay_us;
+    uint32_t leds_count;
+    uint32_t spi_freq;
+    uint32_t delay_us;
 }ws2812d_conf;
 
 static int lock_fd = -1;
 static int shm_fd = -1;
 static uint8_t *shm_ptr = NULL;
 static uint8_t *last_shm_ptr = NULL;
+static uint8_t *spi_buf_ptr = NULL;
 static int gpio_fd = -1;
 static int gpio_line_fd = -1;
+static int spi_fd = -1;
 
 static ws2812d_conf ws2812d_default_conf = {
     .power_pin = DEFAULT_CONF_PWR_GPIO,
-    .channel = DEFAULT_CONF_LED_CHANNEL,
-    .data_pin = DEFAULT_CONF_DATA_GPIO,
+    .spi_freq = DEFAULT_CONF_SPI_FREQ, 
     .delay_us = DEFAULT_CONF_DELAY_US,
-};
-
-static const int available_channel0_gpio[] = {
-    10, 12, 18, 21,
-};
-
-static const int available_channel1_gpio[] = {
-    13, 19,
 };
 
 static const int available_pwr_gpio[] = {
@@ -132,17 +99,58 @@ static const int available_pwr_gpio[] = {
     24, 25, 26, 27,
 };
 
+// Lookup table: 1 WS2812 bit -> 3 SPI bits (encoded as a byte for convenience)
+static const uint8_t ws2812_lookup[2] = { 0b100, 0b110 };
+
+// Precompute 256 entries (3 SPI bytes per WS2812 byte)
+static uint8_t ws2812_table[256][3];
+
+static void build_table() {
+    for (int val = 0; val < 256; val++) {
+        uint32_t out = 0;
+        for (int bit = 7; bit >= 0; --bit) {
+            uint8_t b = (val >> bit) & 1;
+            uint8_t pat = ws2812_lookup[b];
+            out = (out << 3) | pat;
+        }
+        ws2812_table[val][0] = (out >> 16) & 0xFF;
+        ws2812_table[val][1] = (out >> 8) & 0xFF;
+        ws2812_table[val][2] = out & 0xFF;
+    }
+}
+
+static int encode_leds(const uint8_t *grb, uint8_t *_spibuf, size_t _led_count) {
+    if (!grb) {
+        errno = EFAULT;
+        perror("data.leds_encoder.got_null_grb_data");
+        return -1;
+    }
+    if (!_spibuf) {
+        errno = EFAULT;
+        perror("data.leds_encoder.got_null_spibuf");
+        return -1;
+    }
+    
+    for (size_t i = 0; i < _led_count; i++) {
+        memcpy(_spibuf, ws2812_table[grb[i*3 + 1]], 3); _spibuf += 3; // R
+        memcpy(_spibuf, ws2812_table[grb[i*3 + 0]], 3); _spibuf += 3; // G
+        memcpy(_spibuf, ws2812_table[grb[i*3 + 2]], 3); _spibuf += 3; // B
+    }
+    return 0;
+}
+
+
 static int conf_handler(void *user, const char *section, const char *name, const char *value) {
     ws2812d_conf *config = (ws2812d_conf *)user;
     #define CONF_MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
     if (CONF_MATCH("gpio", "power_pin")) {
-        config->power_pin = atoi(value);
-    } else if (CONF_MATCH("gpio", "data_pin")) {
-        config->data_pin = atoi(value);
-    } else if (CONF_MATCH("gpio", "channel")) {
-        config->channel = atoi(value);
+        return xstr2i32(value, 10, &config->power_pin);
+    } else if (CONF_MATCH("spi", "spi_freq")) {
+        return xstr2u32(value, 10, &config->spi_freq);
+    } else if (CONF_MATCH("user", "leds_count")) {
+        return xstr2u32(value, 10, &config->leds_count);
     } else if (CONF_MATCH("user", "delay_us")) {
-        return xstr2umax(value, 10, &config->delay_us);
+        return xstr2u32(value, 10, &config->delay_us);
     } else {
         return 0;
     }
@@ -161,51 +169,18 @@ static int conf_checker(const ws2812d_conf *conf) {
         return -1;
     }
 
-    if (conf->channel == 0 && !int_in_list(conf->data_pin, available_channel0_gpio, sizeof(available_channel0_gpio)/sizeof(int))) {
-        fprintf(stderr, "conf.ini_checker.invalid_config: invalid data pin: %d with channel 0\n", conf->data_pin);
-        return -1;
-    }
+    led_count = conf->leds_count;
     
-    if (conf->channel == 1 && !int_in_list(conf->data_pin, available_channel1_gpio, sizeof(available_channel1_gpio)/sizeof(int))) {
-        fprintf(stderr, "conf.ini_checker.invalid_config: invalid data pin: %d with channel 1\n", conf->data_pin);
-        return -1;
-    }
-
-    if (conf->channel > 1 || conf->channel < 0) {
-        fprintf(stderr, "conf.ini_checker.invalid_config: invalid channel: %d\n", conf->channel);
-    }
-
     return 0;
 }
-
-
-static void conf_apply(ws2811_t *_led_string, const ws2812d_conf *conf) {
-    if (!_led_string) {
-        errno = EFAULT;
-        perror("conf.ini_apply.got_null_ledstring");
-        abort();
-    }
-    if (!conf) {
-        errno = EFAULT;
-        perror("conf.ini_apply.got_null_conf");
-        abort();
-    }
-
-    _led_string->channel[conf->channel].gpionum = conf->data_pin;
-    _led_string->channel[conf->channel].count = LED_COUNT;
-    _led_string->channel[conf->channel].strip_type = WS2812_STRIP_TYPE;
-    _led_string->channel[conf->channel].brightness = 255;
-    return;
-}
-
 
 static void cleanup()
 {
     if (last_shm_ptr) free(last_shm_ptr);
-    // Turn off LEDs
-    memset(ledstring.channel[ws2812d_default_conf.channel].leds, 0, led_count * sizeof(ws2811_led_t));
-    ws2811_render(&ledstring);
-    ws2811_fini(&ledstring);
+    if (spi_buf_ptr) free(spi_buf_ptr);
+
+    if (spi_fd >= 0)
+        close(spi_fd);
 
     // Turn off power pin
     if (gpio_line_fd >= 0) {
@@ -235,6 +210,29 @@ static void signal_handler(int signum)
     cleanup();
     exit(0);
 }
+
+static int setup_spi_dev() {
+    spi_fd = open(SPI_DEV, O_RDWR);
+    if (spi_fd < 0) {
+        perror("spi.spidev.cannot_open_device");
+        return -1;
+    }
+
+    const uint8_t mode = SPI_MODE_0;
+    const uint8_t bits = 8;
+    const uint32_t speed = ws2812d_default_conf.spi_freq;
+    
+    if (ioctl(spi_fd, SPI_IOC_WR_MODE, &mode) < 0 ||
+        ioctl(spi_fd, SPI_IOC_WR_BITS_PER_WORD, &bits) < 0 ||
+        ioctl(spi_fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed) < 0) {
+        perror("spi.spidev.configure_failed");
+        close(spi_fd);
+        return -1;
+    }
+    
+    return 0;
+}
+
 
 static int setup_gpio_power()
 {
@@ -318,11 +316,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    conf_apply(&ledstring, &ws2812d_default_conf);
-
-
     
-
     lock_fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0644);
 
     if (lock_fd < 0) {
@@ -360,6 +354,9 @@ int main(int argc, char **argv) {
     ftruncate(lock_fd, 0);
     dprintf(lock_fd, "%d\n", getpid());
 
+    build_table();
+
+    
 
 
     if (setup_gpio_power() < 0) {
@@ -367,8 +364,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (ws2811_init(&ledstring) != WS2811_SUCCESS) {
-        fprintf(stderr, "main.process.ws2811_init: cannot init ws2811.\n");
+    if (setup_spi_dev() < 0) {
+        fprintf(stderr, "main.process.setup_spi_dev: cannot setup spidev.\n");
         return 1;
     }
 
@@ -390,18 +387,19 @@ int main(int argc, char **argv) {
     signal(SIGTERM, signal_handler);
 
     last_shm_ptr = malloc(led_count * 3 * sizeof(uint8_t));
+    spi_buf_ptr = malloc(led_count * 9 * sizeof(uint8_t));
+    
     memset(last_shm_ptr, 0xFF, led_count * 3 * sizeof(uint8_t));
 
     while (1) {
         if (memcmp(shm_ptr, last_shm_ptr, led_count * 3) != 0) {
             memcpy(last_shm_ptr, shm_ptr, led_count * 3);
-            for (int i = 0; i < LED_COUNT; ++i) {
-                int r = shm_ptr[i * 3 + 0];
-                int g = shm_ptr[i * 3 + 1];
-                int b = shm_ptr[i * 3 + 2];
-                ledstring.channel[ws2812d_default_conf.channel].leds[i] = (r << 16) | (g << 8) | b;
+            encode_leds(shm_ptr, spi_buf_ptr, led_count);
+            ssize_t ret = write(spi_fd, spi_buf_ptr, led_count * 9);
+            if (ret < 0) {
+                perror("main.process.spi_write_failed");
+                break;
             }
-            ws2811_render(&ledstring);
         }
         usleep(ws2812d_default_conf.delay_us);
     }
