@@ -24,5 +24,5 @@ AC_DEFINE_UNQUOTED([VERSION_MINOR], [0], [Minor version number])
 AC_DEFINE_UNQUOTED([VERSION_MICRO], [1], [Micro version number])
 AC_DEFINE_UNQUOTED([VERSION_CLASS], "spi-only", [Class version str])
 # Create the output files.
-AC_CONFIG_FILES([Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile etc/Makefile])
 AC_OUTPUT

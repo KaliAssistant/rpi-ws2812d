@@ -1,6 +1,6 @@
 # Top-level Makefile.am
 
-SUBDIRS = src
+SUBDIRS = src etc
 
 
 # Files to remove with 'make distclean'
@@ -23,4 +23,5 @@ distclean-local:
 					ltmain.sh\
 					missing\
 					src/Makefile.in\
-					src/.deps
+					src/.deps\
+					etc/Makefile.in

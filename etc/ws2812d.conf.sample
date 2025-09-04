@@ -1,0 +1,36 @@
+# ws2812d.conf — configuration for rpi-ws2812d
+#
+# This file controls how the WS2812d daemon behaves.
+# Lines beginning with '#' are comments.
+#
+# Sections:
+#   [gpio] — GPIO settings
+#   [spi]  — SPI settings
+#   [user] — User LED settings
+#
+# Options:
+#   power_pin   : BCM GPIO number used to enable LED power (must be valid in available_pwr_gpio[]).
+#   spi_freq    : SPI clock frequency in Hz (typical 2.4–3.3 MHz works for WS2812).
+#   leds_count  : Number of WS2812/NeoPixel LEDs connected.
+#   delay_us    : Polling delay in microseconds between shared memory checks (e.g. 2000 = 2ms).
+#
+# Default search path: /etc/ws2812d/ws2812d.conf
+# To override, run: ws2812d -c /path/to/config.conf
+#
+
+[gpio]
+# Power control GPIO (BCM numbering).
+# Example: 11 = GPIO11
+power_pin=11
+
+[spi]
+# SPI frequency in Hz (try 2400000 or 3300000)
+spi_freq=3300000
+
+[user]
+# Number of WS2812 LEDs in your strip
+leds_count=1
+
+# Polling delay in microseconds (2000 = 2ms)
+delay_us=2000
+
