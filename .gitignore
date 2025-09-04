@@ -12,7 +12,7 @@ test-driver
 ylwrap
 .deps/
 .dirstamp
-
+dev/
 
 *.o
 *.lo
