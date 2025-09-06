@@ -11,3 +11,12 @@ Version 0.0.1 - 2025-08-07
 - Supports runtime color updates via shared memory
 - Supports external rpi_ws281x as shared lib via --with-rpi-ws281x
 
+Version 0.0.1-spionly - 2025-09-04
+----------------------------------
+- Introduced "spi-only" mode (no rpi_ws281x dependency).
+- Added `etc/ws2812d.conf.sample` and automatic config install logic.
+- Added `shmmatrix` utility for matrix animations.
+- Refactored `shmled` to use `xstrconv` helpers.
+- Dropped `xstr2umax()` (now covered by `xstr2u32`).
+- WS2812 data now encoded via SPI lookup table.
+
